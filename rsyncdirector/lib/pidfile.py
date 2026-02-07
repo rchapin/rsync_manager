@@ -39,7 +39,9 @@ class PidFile(ABC):
     @abstractmethod
     def write(self) -> bool:
         file_exists, existing_pid_str = self.does_pid_file_exist()
-        existing_pid = self.__parse_pid(existing_pid_str)
+        existing_pid = 0
+        if file_exists:
+            existing_pid = self.__parse_pid(existing_pid_str)
 
         should_write_pid = False
         if file_exists and existing_pid != 0:
