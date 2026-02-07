@@ -107,6 +107,8 @@ LOCK_FILES = Gauge(
 
 PID_FILE_ERR = Counter(f"{PREFIX}_pid_file_err", "Number of pid file errors")
 
+PATH = "/metrics"
+
 
 class Metrics(object):
     def __init__(self, logger: Logger, addr: str, port: str) -> None:
@@ -137,13 +139,13 @@ class Metrics(object):
                 logger=self.logger,
                 host="localhost",
                 port=int(self.port),
-                path="/metrics",
+                path=PATH,
                 wait_time=wait_time,
                 num_retries=num_retries,
                 timeout=timeout,
             )
 
-            self.logger.info("Metrics http server started")
+            self.logger.info("Metrics http server started", path=PATH)
         else:
             self.logger.info("Metrics http server already running")
 
