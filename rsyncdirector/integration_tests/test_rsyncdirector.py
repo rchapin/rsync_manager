@@ -223,7 +223,7 @@ class ITRsyncDirector(ITBase):
                 metrics=[
                     Metric(
                         name="rsyncdirector_blocked_total",
-                        labels={"job_id": "local_to_container"},
+                        labels={"rsync_id": app_configs.rsync_id, "job_id": "local_to_container"},
                         value=1.0,
                     )
                 ]
@@ -292,7 +292,7 @@ class ITRsyncDirector(ITBase):
             metrics=[
                 Metric(
                     name="rsyncdirector_blocked_total",
-                    labels={"job_id": "local_to_container"},
+                    labels={"rsync_id": app_configs.rsync_id, "job_id": "local_to_container"},
                     value=1.0,
                 )
             ]
@@ -376,7 +376,11 @@ class ITRsyncDirector(ITBase):
             # we should block on the local lock file.
             metrics_conditions = MetricsConditions(
                 metrics=[
-                    Metric(name="rsyncdirector_blocked_total", labels={"job_id": job_id}, value=1.0)
+                    Metric(
+                        name="rsyncdirector_blocked_total",
+                        labels={"rsync_id": app_configs.rsync_id, "job_id": job_id},
+                        value=1.0,
+                    )
                 ]
             )
             WaitFor.metrics(
@@ -398,7 +402,11 @@ class ITRsyncDirector(ITBase):
             # rsyncdirector should continue executing the job.
             metrics_conditions = MetricsConditions(
                 metrics=[
-                    Metric(name="rsyncdirector_blocked_total", labels={"job_id": job_id}, value=2.0)
+                    Metric(
+                        name="rsyncdirector_blocked_total",
+                        labels={"rsync_id": app_configs.rsync_id, "job_id": job_id},
+                        value=2.0,
+                    )
                 ]
             )
             WaitFor.metrics(
@@ -496,7 +504,10 @@ class ITRsyncDirector(ITBase):
                 metrics=[
                     Metric(
                         name="rsyncdirector_lock_files",
-                        labels={"job_id": "local_to_container_multi_lock_files"},
+                        labels={
+                            "rsync_id": app_configs.rsync_id,
+                            "job_id": "local_to_container_multi_lock_files",
+                        },
                         value=2.0,
                     )
                 ]
@@ -712,7 +723,7 @@ class ITRsyncDirector(ITBase):
                 metrics=[
                     Metric(
                         name="rsyncdirector_blocked_total",
-                        labels={"job_id": "interruptable_wait"},
+                        labels={"rsync_id": app_configs.rsync_id, "job_id": "interruptable_wait"},
                         value=1.0,
                     )
                 ]
@@ -794,7 +805,7 @@ class ITRsyncDirector(ITBase):
                 metrics=[
                     Metric(
                         name="rsyncdirector_job_skipped_for_block_timeout_total",
-                        labels={"job_id": job_id},
+                        labels={"rsync_id": app_configs.rsync_id, "job_id": job_id},
                         value=1.0,
                     )
                 ]
@@ -864,7 +875,11 @@ class ITRsyncDirector(ITBase):
 
         metrics_conditions = MetricsConditions(
             metrics=[
-                Metric(name="rsyncdirector_blocked_total", labels={"job_id": job_id}, value=1.0)
+                Metric(
+                    name="rsyncdirector_blocked_total",
+                    labels={"rsync_id": app_configs.rsync_id, "job_id": job_id},
+                    value=1.0,
+                )
             ]
         )
         WaitFor.metrics(
@@ -884,7 +899,7 @@ class ITRsyncDirector(ITBase):
             metrics=[
                 Metric(
                     name="rsyncdirector_lock_files",
-                    labels={"job_id": job_id},
+                    labels={"rsync_id": app_configs.rsync_id, "job_id": job_id},
                     value=1.0,
                 )
             ]

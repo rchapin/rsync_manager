@@ -16,13 +16,13 @@ RUNS_COMPLETED = Counter(
 ACTION_EXECUTION_ERR = Counter(
     f"{PREFIX}_action_exec_err",
     "Number of action execution errors",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id", "action_id"],
 )
 
 JOB_DURATION = Histogram(
     name=f"{PREFIX}_job_duration_seconds",
     documentation="Duration of job in seconds",
-    labelnames=["job_id"],
+    labelnames=["rsync_id", "job_id"],
     buckets=(
         0.01,
         0.1,
@@ -48,35 +48,29 @@ JOB_DURATION = Histogram(
 JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER = Counter(
     f"{PREFIX}_job_skipped_for_block_timeout",
     "Number of times a job is skipped because a block timedout",
-    labelnames=["job_id"],
-)
-
-JOB_ABORTED_FOR_FAILED_PROCESS_ERR = Counter(
-    f"{PREFIX}_job_aborted_for_failed_process_err",
-    "Number of times a job is aborted because of a failed process",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id"],
 )
 
 JOB_ABORTED_FOR_FAILED_ACTION_ERR = Counter(
     f"{PREFIX}_job_aborted_for_failed_action_err",
     "Number of times a job is aborted because of a failed command",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id", "action_id"],
 )
 
 JOB_ABORTED_FOR_EXCEPTION_ERR = Counter(
     f"{PREFIX}_job_aborted_for_exception_err",
     "Number of times a job is aborted because of an exception thrown by running the command",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id", "action_id"],
 )
 
 BLOCKED_COUNTER = Counter(
-    f"{PREFIX}_blocked", "Number of times a job is blocked", labelnames=["job_id"]
+    f"{PREFIX}_blocked", "Number of times a job is blocked", labelnames=["rsync_id", "job_id"]
 )
 
 BLOCKED_DURATION = Histogram(
     f"{PREFIX}_blocked_seconds",
     "Time blocked in seconds",
-    labelnames=["job_id"],
+    labelnames=["rsync_id", "job_id"],
     buckets=(
         0.01,
         0.1,
@@ -99,13 +93,23 @@ BLOCKED_DURATION = Histogram(
     ),
 )
 
-BLOCK_FILE_ERR = Counter(f"{PREFIX}_block_file_err", "Number of block file errors")
-
-LOCK_FILES = Gauge(
-    f"{PREFIX}_lock_files", "Number of currently existing lock files", labelnames=["job_id"]
+BLOCK_FILE_ERR = Counter(
+    f"{PREFIX}_block_file_err",
+    "Number of block file errors",
+    labelnames=["rsync_id", "job_id"],
 )
 
-PID_FILE_ERR = Counter(f"{PREFIX}_pid_file_err", "Number of pid file errors")
+LOCK_FILES = Gauge(
+    f"{PREFIX}_lock_files",
+    "Number of currently existing lock files",
+    labelnames=["rsync_id", "job_id"],
+)
+
+PID_FILE_ERR = Counter(
+    f"{PREFIX}_pid_file_err",
+    "Number of pid file errors",
+    labelnames=["rsync_id"],
+)
 
 PATH = "/metrics"
 

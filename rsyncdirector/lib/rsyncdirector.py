@@ -28,7 +28,6 @@ from rsyncdirector.lib.command import Command
 from rsyncdirector.lib.config import BlocksOnType, LockFileType
 from rsyncdirector.lib.enums import RunResult
 from rsyncdirector.lib.logging import Logger
-from rsyncdirector.lib.metrics import Metrics
 from rsyncdirector.lib.pidfile import PidFileLocal, PidFileRemote
 from rsyncdirector.lib.rsync import Rsync
 
@@ -102,7 +101,7 @@ class RsyncDirector(Thread):
         self.pid_file = PidFileLocal(logger=self.logger, pid=self.pid, path=pid_path)
         if not self.pid_file.write():
             self.logger.error("unable to write pidfile, shutting down", pid_path=pid_path)
-            metrics.PID_FILE_ERR.inc()
+            metrics.PID_FILE_ERR.labels(self.rsync_id).inc()
             self.shutdown()
             return
         self.logger = self.logger.bind(pid=self.pid)
@@ -148,7 +147,9 @@ class RsyncDirector(Thread):
                     case BlocksOnType.LOCAL:
                         blocked = RsyncDirector.__is_blocked_local(block, logger)
                     case BlocksOnType.REMOTE:
-                        blocked = RsyncDirector.__is_blocked_remote(block, logger)
+                        blocked = RsyncDirector.__is_blocked_remote(
+                            self.rsync_id, job_id, block, logger
+                        )
                     case _:
                         logger.fatal("Unknown blocks_on type")
                         sys.exit(1)
@@ -167,7 +168,7 @@ class RsyncDirector(Thread):
 
                     wait_time = block["wait_time"]
                     logger.info("job is blocked")
-                    metrics.BLOCKED_COUNTER.labels(job_id).inc()
+                    metrics.BLOCKED_COUNTER.labels(self.rsync_id, job_id).inc()
                     self.__interruptable_wait(wait_time)
 
         # Once all blocks have been satisfied or if there are no blocks configured just return True
@@ -208,7 +209,7 @@ class RsyncDirector(Thread):
             if self.is_shutdown():
                 self.logger.info("We have been shutdown, exiting jobs execution loop")
                 break
-            with metrics.JOB_DURATION.labels(job["id"]).time():
+            with metrics.JOB_DURATION.labels(self.rsync_id, job["id"]).time():
                 self.__run_job(job)
 
         self.scheduled_job_running = False
@@ -336,7 +337,7 @@ class RsyncDirector(Thread):
             self.wait_event.set()
 
     @staticmethod
-    def __is_blocked_remote(blocks_on_conf: Dict, logger: Logger):
+    def __is_blocked_remote(rsync_id: str, job_id: str, blocks_on_conf: Dict, logger: Logger):
         retval = False
         conn = None
         try:
@@ -358,7 +359,7 @@ class RsyncDirector(Thread):
                         stdout=result.stdout,
                         stderr=result.stdout,
                     )
-                    metrics.BLOCK_FILE_ERR.inc()
+                    metrics.BLOCK_FILE_ERR.labels(rsync_id, job_id).inc()
                 else:
                     block_file_pid = result.stdout.strip()
                     logger.info(
@@ -367,7 +368,7 @@ class RsyncDirector(Thread):
                     )
         except Exception as e:
             logger.error("checking for remote block", exception=e)
-            metrics.BLOCK_FILE_ERR.inc()
+            metrics.BLOCK_FILE_ERR.labels(rsync_id, job_id).inc()
             traceback.print_exc()
         finally:
             if conn is not None:
@@ -405,12 +406,13 @@ class RsyncDirector(Thread):
                         if pid_file.delete() is not True:
                             logger.fatal("unable to delete lock file")
                             sys.exit(1)
-                        metrics.LOCK_FILES.labels(job_id).dec()
+                        metrics.LOCK_FILES.labels(self.rsync_id, job_id).dec()
                     case LockFileAction.WRITE:
                         if pid_file.write() is not True:
                             self.logger.fatal("unable to write lock file")
+                            metrics.PID_FILE_ERR.labels(self.rsync_id).inc()
                             sys.exit(1)
-                        metrics.LOCK_FILES.labels(job_id).inc()
+                        metrics.LOCK_FILES.labels(self.rsync_id, job_id).inc()
                         pass
                     case _:
                         logger.fatal("Unknown lock_file_action")
@@ -428,11 +430,13 @@ class RsyncDirector(Thread):
         logger = self.logger.bind(job_id=job_id, job_type=job["type"])
 
         if "blocks_on" in job:
-            with metrics.BLOCKED_DURATION.labels(job["id"]).time():
+            with metrics.BLOCKED_DURATION.labels(self.rsync_id, job["id"]).time():
                 continue_processing_job = self.__block(logger, job_id, job["blocks_on"])
                 if not continue_processing_job:
                     logger.info("block condition was not removed, not continuing processing job")
-                    metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(job_id).inc()
+                    metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(
+                        self.rsync_id, job_id
+                    ).inc()
                     return
 
         # Write lock files in a try block so that we can ensure to delete them.
@@ -489,7 +493,9 @@ class RsyncDirector(Thread):
                                 continue
                             except Exception as e:
                                 logger.error("reading from result queue failed", exception=e)
-                                metrics.ACTION_EXECUTION_ERR.labels(job_id, action_id).inc()
+                                metrics.ACTION_EXECUTION_ERR.labels(
+                                    self.rsync_id, job_id, action_id
+                                ).inc()
                                 break
 
                         # Process exited, try one final non-blocking read in case message arrived
@@ -509,12 +515,16 @@ class RsyncDirector(Thread):
 
                     if self.process.exitcode != 0:
                         logger.error("Process failed", exit_code=self.process.exitcode)
-                        metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(job_id, action_id).inc()
+                        metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
+                            self.rsync_id, job_id, action_id
+                        ).inc()
                         return
 
                     if not result_msg:
                         logger.error("reading from result queue failed, no result_msg")
-                        metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(job_id, action_id).inc()
+                        metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
+                            self.rsync_id, job_id, action_id
+                        ).inc()
                         return
 
                     # Process the result message.
@@ -530,7 +540,7 @@ class RsyncDirector(Thread):
                                 result=result_msg,
                             )
                             metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
-                                job_id, action_id
+                                self.rsync_id, job_id, action_id
                             ).inc()
                             return
                         logger.info("action suceeded", result=result_msg)
@@ -539,7 +549,9 @@ class RsyncDirector(Thread):
                     err_type = type(e).__name__
                     err_msg = str(e)
                     logger.error("running job", error_type=err_type, err_msg=err_msg)
-                    metrics.JOB_ABORTED_FOR_EXCEPTION_ERR.labels(job_id, action_id).inc()
+                    metrics.JOB_ABORTED_FOR_EXCEPTION_ERR.labels(
+                        self.rsync_id, job_id, action_id
+                    ).inc()
                     return
                 finally:
                     self.process.close()
@@ -562,39 +574,39 @@ class RsyncDirector(Thread):
         startup_retry_wait_seconds = RsyncDirector.METRICS_DEFAULT_STARTUP_RETRY_WAIT_SECONDS
         startup_num_retries = RsyncDirector.METRICS_DEFAULT_STARTUP_NUM_RETRIES
         if "metrics" in self.configs:
-            metrics = self.configs["metrics"]
-            if "addr" in metrics:
-                addr = metrics["addr"]
-            if "port" in metrics:
-                port = metrics["port"]
-            if "startup_timeout_seconds" in metrics:
-                startup_timeout_seconds = float(metrics["startup_timeout_seconds"])
-            if "startup_retry_wait_seconds" in metrics:
-                startup_retry_wait_seconds = float(metrics["startup_retry_wait_seconds"])
-            if "startup_retry_limit" in metrics:
-                startup_num_retries = int(metrics["startup_retry_limit"])
+            metrics_configs = self.configs["metrics"]
+            if "addr" in metrics_configs:
+                addr = metrics_configs["addr"]
+            if "port" in metrics_configs:
+                port = metrics_configs["port"]
+            if "startup_timeout_seconds" in metrics_configs:
+                startup_timeout_seconds = float(metrics_configs["startup_timeout_seconds"])
+            if "startup_retry_wait_seconds" in metrics_configs:
+                startup_retry_wait_seconds = float(metrics_configs["startup_retry_wait_seconds"])
+            if "startup_retry_limit" in metrics_configs:
+                startup_num_retries = int(metrics_configs["startup_retry_limit"])
 
-        self.metrics = Metrics(logger=self.logger, addr=addr, port=port)
+        self.metrics = metrics.Metrics(logger=self.logger, addr=addr, port=port)
         self.__initialize_metrics()
         self.metrics.start(startup_timeout_seconds, startup_retry_wait_seconds, startup_num_retries)
 
     def __initialize_metrics(self) -> None:
-        metrics.BLOCK_FILE_ERR.inc(0)
-        metrics.PID_FILE_ERR.inc(0)
+        metrics.PID_FILE_ERR.labels(self.rsync_id).inc(0)
         metrics.RUNS_COMPLETED.labels(self.rsync_id).inc(0)
 
         for job in self.configs["jobs"]:
             job_id = job["id"]
-            metrics.BLOCKED_COUNTER.labels(job_id).inc(0)
-            metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(job_id).inc(0)
-            metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(job_id).inc(0)
+            metrics.BLOCKED_COUNTER.labels(self.rsync_id, job_id).inc(0)
+            metrics.BLOCK_FILE_ERR.labels(self.rsync_id, job_id).inc(0)
+            metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(self.rsync_id, job_id).inc(0)
 
             for action in job["actions"]:
                 action_id = action["id"]
-                metrics.ACTION_EXECUTION_ERR.labels(job_id, action_id).inc(0)
-                metrics.JOB_ABORTED_FOR_EXCEPTION_ERR.labels(job_id, action_id).inc(0)
-                metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(job_id, action_id).inc(0)
-                metrics.JOB_ABORTED_FOR_FAILED_PROCESS_ERR.labels(job_id, action_id).inc(0)
+                metrics.ACTION_EXECUTION_ERR.labels(self.rsync_id, job_id, action_id).inc(0)
+                metrics.JOB_ABORTED_FOR_EXCEPTION_ERR.labels(self.rsync_id, job_id, action_id).inc()
+                metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
+                    self.rsync_id, job_id, action_id
+                ).inc(0)
 
     # ##########################################################################
     # Public methods and funcs
