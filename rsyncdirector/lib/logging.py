@@ -1,3 +1,9 @@
+# This software is released under the Revised BSD License.
+# See LICENSE for details
+#
+# Copyright (c) 2019, Ryan Chapin, https//:www.ryanchapin.com
+# All rights reserved.
+
 import io
 import logging
 import sys
@@ -10,7 +16,7 @@ from structlog.stdlib import BoundLogger
 Logger = Union[BoundLogger, Any]
 
 
-def add_timestamp(logger, method_name, event_dict):
+def add_timestamp(_logger, _method_name, event_dict):
     """
     Add ISO 8601 timestamp with timezone offset. to ensure that we are compabible with ELK stack
     timestamp formats.
