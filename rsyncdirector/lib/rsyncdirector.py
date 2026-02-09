@@ -587,26 +587,7 @@ class RsyncDirector(Thread):
                 startup_num_retries = int(metrics_configs["startup_retry_limit"])
 
         self.metrics = metrics.Metrics(logger=self.logger, addr=addr, port=port)
-        self.__initialize_metrics()
         self.metrics.start(startup_timeout_seconds, startup_retry_wait_seconds, startup_num_retries)
-
-    def __initialize_metrics(self) -> None:
-        metrics.PID_FILE_ERR.labels(self.rsync_id).inc(0)
-        metrics.RUNS_COMPLETED.labels(self.rsync_id).inc(0)
-
-        for job in self.configs["jobs"]:
-            job_id = job["id"]
-            metrics.BLOCKED_COUNTER.labels(self.rsync_id, job_id).inc(0)
-            metrics.BLOCK_FILE_ERR.labels(self.rsync_id, job_id).inc(0)
-            metrics.JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER.labels(self.rsync_id, job_id).inc(0)
-
-            for action in job["actions"]:
-                action_id = action["id"]
-                metrics.ACTION_EXECUTION_ERR.labels(self.rsync_id, job_id, action_id).inc(0)
-                metrics.JOB_ABORTED_FOR_EXCEPTION_ERR.labels(self.rsync_id, job_id, action_id).inc()
-                metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
-                    self.rsync_id, job_id, action_id
-                ).inc(0)
 
     # ##########################################################################
     # Public methods and funcs
