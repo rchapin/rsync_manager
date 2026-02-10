@@ -50,8 +50,10 @@ markupsafe==3.0.2
     #   flask
     #   jinja2
     #   werkzeug
-paramiko==3.4.0
-    # via fabric
+paramiko==3.4.1
+    # via
+    #   -r requirements.in
+    #   fabric
 prometheus-client==0.21.1
     # via -r requirements.in
 psutil==7.1.3

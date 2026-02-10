@@ -94,7 +94,7 @@ class RsyncDirector(Thread):
         pid_filename = RsyncDirector.__get_pid_file_name(self.rsync_id)
         pid_file_dir = (
             self.configs["pid_file_dir"]
-            if self.configs["pid_file_dir"]
+            if "pid_file_dir" in self.configs
             else RsyncDirector.PID_FILE_DIR_DEFAULT
         )
         pid_path = os.path.join(pid_file_dir, pid_filename)
