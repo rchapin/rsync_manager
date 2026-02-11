@@ -1,5 +1,3 @@
-import time
-
 from flask import Flask
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, start_http_server
 

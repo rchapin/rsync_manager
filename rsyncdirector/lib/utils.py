@@ -27,7 +27,7 @@ class Utils(object):
         return input.translate(Utils.TRANS_TABLE)
 
     @staticmethod
-    def run_bash_cmd(cmd: str, timeout_seconds: int = 0) -> Tuple[int, str, str]:
+    def run_bash_cmd(cmd: str, timeout_seconds: int | None = None) -> Tuple[int, str, str]:
         result = subprocess.run(
             cmd, shell=True, timeout=timeout_seconds, capture_output=True, executable="/bin/bash"
         )

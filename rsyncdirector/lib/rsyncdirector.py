@@ -14,18 +14,16 @@ from datetime import datetime, timedelta
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from threading import Event, Thread
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 from apscheduler import events
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fabric import Connection
-from invoke import run
 
 import rsyncdirector.lib.config as cfg
 import rsyncdirector.lib.metrics as metrics
 from rsyncdirector.lib.command import Command
-from rsyncdirector.lib.config import BlocksOnType, LockFileType
 from rsyncdirector.lib.enums import RunResult
 from rsyncdirector.lib.logging import Logger
 from rsyncdirector.lib.pidfile import PidFileLocal, PidFileRemote
@@ -139,14 +137,14 @@ class RsyncDirector(Thread):
 
             while True and self.is_shutdown() == False:
                 # Get the type and see if we are blocked.
-                blocks_on_type = BlocksOnType.get_enum_value_from_string(block["type"])
+                blocks_on_type = cfg.BlocksOnType.get_enum_value_from_string(block["type"])
                 logger = logger.bind(blocks_on_conf=block)
                 blocked = False
 
                 match blocks_on_type:
-                    case BlocksOnType.LOCAL:
+                    case cfg.BlocksOnType.LOCAL:
                         blocked = RsyncDirector.__is_blocked_local(block, logger)
-                    case BlocksOnType.REMOTE:
+                    case cfg.BlocksOnType.REMOTE:
                         blocked = RsyncDirector.__is_blocked_remote(
                             self.rsync_id, job_id, block, logger
                         )
@@ -304,6 +302,7 @@ class RsyncDirector(Thread):
         try:
             retval = version("rsyncdirector")
         except PackageNotFoundError:
+            # If we cannot glean the version we will simply continue "unknown".
             pass
         return retval
 
@@ -379,7 +378,7 @@ class RsyncDirector(Thread):
         self, logger: Logger, job_id: str, lock_files: List[Dict], lock_file_action: LockFileAction
     ) -> None:
         for lock_file in lock_files:
-            lock_file_type = LockFileType.get_enum_value_from_string(lock_file["type"])
+            lock_file_type = cfg.LockFileType.get_enum_value_from_string(lock_file["type"])
             file_path = lock_file["path"]
             logger = logger.bind(lock_file=lock_file, lock_file_action=lock_file_action)
             conn = None
@@ -390,9 +389,9 @@ class RsyncDirector(Thread):
             pid_file = None
             try:
                 match lock_file_type:
-                    case LockFileType.LOCAL:
+                    case cfg.LockFileType.LOCAL:
                         pid_file = PidFileLocal(logger=logger, pid=self.pid, path=file_path)
-                    case LockFileType.REMOTE:
+                    case cfg.LockFileType.REMOTE:
                         conn = RsyncDirector.__get_connection(lock_file)
                         pid_file = PidFileRemote(
                             logger=logger, pid=self.pid, path=file_path, conn=conn
@@ -503,10 +502,10 @@ class RsyncDirector(Thread):
                         if result_msg is None and not result_queue.empty():
                             try:
                                 result_msg = result_queue.get(block=False)
-                            except:
+                            except Exception as e:
                                 logger.error("reading from result queue failed", exception=e)
                                 metrics.JOB_ABORTED_FOR_FAILED_ACTION_ERR.labels(
-                                    job_id, action_id
+                                    self.rsync_id, job_id, action_id
                                 ).inc()
                                 return
 
@@ -535,7 +534,7 @@ class RsyncDirector(Thread):
                             logger.error(
                                 "action failed, exiting job",
                                 result_stdout=result.stdout.strip(),
-                                result_sterr=result.stderr.strip(),
+                                result_stderr=result.stderr.strip(),
                                 result_return_code=result.return_code,
                                 result=result_msg,
                             )
@@ -543,7 +542,7 @@ class RsyncDirector(Thread):
                                 self.rsync_id, job_id, action_id
                             ).inc()
                             return
-                        logger.info("action suceeded", result=result_msg)
+                        logger.info("action succeeded", result=result_msg)
 
                 except Exception as e:
                     err_type = type(e).__name__

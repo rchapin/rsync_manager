@@ -4,7 +4,6 @@
 # Copyright (c) 2019, Ryan Chapin, https//:www.ryanchapin.com
 # All rights reserved.
 
-import logging
 import unittest
 from dataclasses import dataclass
 

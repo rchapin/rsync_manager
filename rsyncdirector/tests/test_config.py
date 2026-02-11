@@ -1,5 +1,4 @@
 import unittest
-from dataclasses import dataclass
 
 
 class ConfigTest(unittest.TestCase):

@@ -18,7 +18,6 @@ from rsyncdirector.integration_tests.int_test_utils import ContainerType, Integr
 from rsyncdirector.integration_tests.metrics_scraper import MetricsScraper, MetricsScraperCfg
 from rsyncdirector.lib import logging
 from rsyncdirector.lib.config import JobType
-from rsyncdirector.lib.logging import Logger
 
 DOCKER_SSH_WAIT_TIME = 1
 

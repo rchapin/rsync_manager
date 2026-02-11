@@ -246,9 +246,3 @@ class WaitFor(object):
 
             if continue_waiting == False:
                 break
-
-    @staticmethod
-    def to_metric_key_and_value(metric: Metric) -> Tuple[str, float]:
-        labels_key = "" if metric.labels is None else MetricsScraper.get_labels_key(metric.labels)
-        key = metric.name if labels_key == "" else f"{metric.name}::{labels_key}"
-        return "", 1.0

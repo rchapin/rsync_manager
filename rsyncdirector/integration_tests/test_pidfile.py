@@ -28,7 +28,7 @@ ExecRemoteFunc = Callable[[Connection], None]
 class ITPidFile(ITBase):
 
     def setUp(self):
-        self.logger = logging.get_logger("metrics-scraper-inttest", "INFO")
+        self.logger = logging.get_logger("pidfile-inttest", "INFO")
         self.logger.info("Running setup")
         self.setup_base()
         IntegrationTestUtils.restart_docker_containers(self.logger, self.test_configs)

@@ -13,7 +13,6 @@ from typing import Tuple
 import psutil
 from fabric import Connection
 
-import rsyncdirector.lib.metrics as metrics
 from rsyncdirector.lib.logging import Logger
 
 

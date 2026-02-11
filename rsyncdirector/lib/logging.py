@@ -18,7 +18,7 @@ Logger = Union[BoundLogger, Any]
 
 def add_timestamp(_logger, _method_name, event_dict):
     """
-    Add ISO 8601 timestamp with timezone offset. to ensure that we are compabible with ELK stack
+    Add ISO 8601 timestamp with timezone offset. to ensure that we are compatible with ELK stack
     timestamp formats.
     """
     event_dict["@timestamp"] = datetime.now().astimezone().isoformat()
