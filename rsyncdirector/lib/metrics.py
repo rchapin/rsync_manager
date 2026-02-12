@@ -1,18 +1,26 @@
 from flask import Flask
-from typing import Any, Callable, Iterable, Sequence
-from prometheus_client import Counter, Gauge, Histogram, Metric, generate_latest, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, generate_latest, start_http_server
+
+from rsyncdirector.lib.logging import Logger
 from rsyncdirector.lib.utils import Utils
-import logging
-import time
 
 NAME = "metrics"
+PREFIX = "rsyncdirector"
 
-RUNS_COMPLETED = Counter("runs_completed", "Number of runs completed", labelnames=["rsync_id"])
+RUNS_COMPLETED = Counter(
+    f"{PREFIX}_runs_completed", "Number of runs completed", labelnames=["rsync_id"]
+)
+
+ACTION_EXECUTION_ERR = Counter(
+    f"{PREFIX}_action_exec_err",
+    "Number of action execution errors",
+    labelnames=["rsync_id", "job_id", "action_id"],
+)
 
 JOB_DURATION = Histogram(
-    name="job_duration_seconds",
+    name=f"{PREFIX}_job_duration_seconds",
     documentation="Duration of job in seconds",
-    labelnames=["job_id"],
+    labelnames=["rsync_id", "job_id"],
     buckets=(
         0.01,
         0.1,
@@ -28,43 +36,35 @@ JOB_DURATION = Histogram(
         7200,
         14400,
         28800,
-        86400,
-        172800,
-        604800,
-        1209600,
     ),
 )
 
 JOB_SKIPPED_FOR_BLOCK_TIMEOUT_COUNTER = Counter(
-    "job_skipped_for_block_timeout",
+    f"{PREFIX}_job_skipped_for_block_timeout",
     "Number of times a job is skipped because a block timedout",
-    labelnames=["job_id"],
-)
-
-JOB_ABORTED_FOR_FAILED_PROCESS_ERR = Counter(
-    "job_aborted_for_failed_process_err",
-    "Number of times a job is aborted because of a failed process",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id"],
 )
 
 JOB_ABORTED_FOR_FAILED_ACTION_ERR = Counter(
-    "job_aborted_for_failed_action_err",
+    f"{PREFIX}_job_aborted_for_failed_action_err",
     "Number of times a job is aborted because of a failed command",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id", "action_id"],
 )
 
 JOB_ABORTED_FOR_EXCEPTION_ERR = Counter(
-    "job_aborted_for_exception_err",
+    f"{PREFIX}_job_aborted_for_exception_err",
     "Number of times a job is aborted because of an exception thrown by running the command",
-    labelnames=["job_id", "action_id"],
+    labelnames=["rsync_id", "job_id", "action_id"],
 )
 
-BLOCKED_COUNTER = Counter("blocked", "Number of times a job is blocked", labelnames=["job_id"])
+BLOCKED_COUNTER = Counter(
+    f"{PREFIX}_blocked", "Number of times a job is blocked", labelnames=["rsync_id", "job_id"]
+)
 
 BLOCKED_DURATION = Histogram(
-    "blocked_seconds",
+    f"{PREFIX}_blocked_seconds",
     "Time blocked in seconds",
-    labelnames=["job_id"],
+    labelnames=["rsync_id", "job_id"],
     buckets=(
         0.01,
         0.1,
@@ -87,12 +87,30 @@ BLOCKED_DURATION = Histogram(
     ),
 )
 
-LOCK_FILES = Gauge("lock_files", "Number of currently existing lock files", labelnames=["job_id"])
+BLOCK_FILE_ERR = Counter(
+    f"{PREFIX}_block_file_err",
+    "Number of block file errors",
+    labelnames=["rsync_id", "job_id"],
+)
+
+LOCK_FILES = Gauge(
+    f"{PREFIX}_lock_files",
+    "Number of currently existing lock files",
+    labelnames=["rsync_id", "job_id"],
+)
+
+PID_FILE_ERR = Counter(
+    f"{PREFIX}_pid_file_err",
+    "Number of pid file errors",
+    labelnames=["rsync_id"],
+)
+
+PATH = "/metrics"
 
 
 class Metrics(object):
-    def __init__(self, logger: logging.Logger, addr: str, port: str) -> None:
-        self.logger = logger
+    def __init__(self, logger: Logger, addr: str, port: str) -> None:
+        self.logger = logger.bind(address=addr, port=port)
         self.addr = addr
         self.port = port
         self.app = Flask(NAME)
@@ -119,17 +137,15 @@ class Metrics(object):
                 logger=self.logger,
                 host="localhost",
                 port=int(self.port),
-                path="/metrics",
+                path=PATH,
                 wait_time=wait_time,
                 num_retries=num_retries,
                 timeout=timeout,
             )
 
-            self.logger.info(f"Metrics http server started on http://{self.addr}:{self.port}")
+            self.logger.info("Metrics http server started", path=PATH)
         else:
-            self.logger.info(
-                f"Metrics http server already running on http://{self.addr}:{self.port}"
-            )
+            self.logger.info("Metrics http server already running")
 
     def stop(self):
         if self.running:

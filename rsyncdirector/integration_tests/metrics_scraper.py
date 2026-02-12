@@ -5,14 +5,16 @@
 # All rights reserved.
 
 import copy
-import requests
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
-from logging import Logger
 from threading import Event, Lock, Thread
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
+
+import requests
+
+from rsyncdirector.lib.logging import Logger
 
 
 @dataclass
@@ -52,7 +54,7 @@ class MetricsScraper(Thread):
 
         return "|".join(pairs)
 
-    def get_metrics(self) -> dict:
+    def get_metrics(self) -> Optional[dict]:
         self.metrics_lock.acquire_lock()
         retval = copy.deepcopy(self.metrics)
         self.metrics_lock.release_lock()
@@ -78,11 +80,15 @@ class MetricsScraper(Thread):
                 self.metrics_lock.acquire_lock()
                 self.metrics = metrics
                 self.metrics_lock.release_lock()
+            except AssertionError as e:
+                self.logger.error("AssertionError", e=e)
+                os._exit(1)
+
             except Exception as e:
                 err_count = err_count + 1
                 # We never re-raise the exception, just keep trying until we are shutdown.
                 if err_count % 10 == 0:
-                    self.logger.info(f"metrics scraper exception; e={e}")
+                    self.logger.info("metrics scraper", exception=e)
 
             time.sleep(self._cfg.scrape_interval.total_seconds())
         self.logger.info("exiting run....")
@@ -98,10 +104,14 @@ class MetricsScraper(Thread):
 
             if not line.startswith("#"):
                 tokens = line.split()
-                assert len(tokens) == 2
+                assert (
+                    len(tokens) == 2
+                ), f"likely test data included with spaces in ids; line={line}, tokens={tokens}"
 
                 name_tokens = tokens[0].split("{")
-                assert len(name_tokens) > 0
+                assert (
+                    len(name_tokens) > 0
+                ), f"likely test data included with spaces in ids; line={line}, tokens={tokens}"
                 name = name_tokens[0]
 
                 val = None
@@ -236,9 +246,3 @@ class WaitFor(object):
 
             if continue_waiting == False:
                 break
-
-    @staticmethod
-    def to_metric_key_and_value(metric: Metric) -> Tuple[str, float]:
-        labels_key = MetricsScraper.get_labels_key(metric.labels)
-        key = metric.name if labels_key == "" else f"{metric.name}::{labels_key}"
-        return "", 1.0

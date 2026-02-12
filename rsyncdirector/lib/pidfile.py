@@ -4,20 +4,22 @@
 # Copyright (c) 2019, Ryan Chapin, https//:www.ryanchapin.com
 # All rights reserved.
 
-import logging
 import os
 import sys
-import psutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from fabric import Connection
 from typing import Tuple
+
+import psutil
+from fabric import Connection
+
+from rsyncdirector.lib.logging import Logger
 
 
 class PidFile(ABC):
 
-    def __init__(self, logger: logging.Logger, pid: int, path: str) -> None:
-        self.logger = logger
+    def __init__(self, logger: Logger, pid: int, path: str) -> None:
+        self.logger = logger.bind(pid=pid, path=path)
         self.pid = pid
         self.path = path
 
@@ -26,35 +28,26 @@ class PidFile(ABC):
         pass
 
     @abstractmethod
-    def does_pid_file_exist(self) -> Tuple[bool, int]:
+    def does_pid_file_exist(self) -> Tuple[bool, str]:
         pass
 
     @abstractmethod
-    def does_process_with_pid_exist(self) -> bool:
+    def does_process_with_pid_exist(self, pid: int) -> bool:
         pass
 
     @abstractmethod
     def write(self) -> bool:
         file_exists, existing_pid_str = self.does_pid_file_exist()
-        existing_pid = None
-        if existing_pid_str != "":
-            try:
-                existing_pid = int(existing_pid_str)
-            except Exception as e:
-                # If this fails, we will assume that there isn't a valid process running
-                self.logger.warning(
-                    f"pid file contained unparseable int; self.path={self.path}, existing_pid={existing_pid}"
-                )
-                existing_pid = None
+        existing_pid = 0
+        if file_exists:
+            existing_pid = self.__parse_pid(existing_pid_str)
 
         should_write_pid = False
-        if file_exists and existing_pid:
+        if file_exists and existing_pid != 0:
             # Check to see if, for some reason that this is already our pid.
             if existing_pid == self.pid:
                 should_write_pid = True
-                self.logger.info(
-                    f"existing local pid file contains our pid, overwriting it; path={self.path}, pid={self.pid}"
-                )
+                self.logger.info("existing local pid file contains our pid, overwriting it")
             else:
                 """
                 If the existing pid is not ours, we need to verify that there is a running process
@@ -62,7 +55,8 @@ class PidFile(ABC):
                 """
                 if not self.does_process_with_pid_exist(existing_pid):
                     self.logger.info(
-                        f"found existing pid file with existing pid that maps to non-existant process; path={self.path}, existing_pid={existing_pid}"
+                        "found existing pid file with existing pid that maps to non-existant process",
+                        existing_pid=existing_pid,
                     )
                     should_write_pid = True
 
@@ -72,10 +66,18 @@ class PidFile(ABC):
 
         return should_write_pid
 
+    def __parse_pid(self, pid_str: str) -> int:
+        try:
+            existing_pid = int(pid_str)
+            return existing_pid
+        except Exception as e:
+            self.logger.warning("unparseable pid", pid_str=pid_str)
+            return 0
+
 
 class PidFileLocal(PidFile):
 
-    def __init__(self, logger: logging.Logger, pid: int, path: str) -> None:
+    def __init__(self, logger: Logger, pid: int, path: str) -> None:
         super().__init__(logger, pid, path)
 
     def delete(self) -> bool:
@@ -85,13 +87,11 @@ class PidFileLocal(PidFile):
     def does_pid_file_exist(self) -> Tuple[bool, str]:
         path = Path(self.path)
         if path.is_dir():
-            self.logger.warning(
-                f"pid path is a directory for some reason, deleting it; self.path={self.path}"
-            )
+            self.logger.warning("pid path is a directory for some reason, deleting it")
             path.rmdir()
             return False, ""
 
-        file_exists = None
+        file_exists = False
         existing_pid = ""
         if path.is_file():
             # Read the existing file and get the pid if there is one
@@ -119,14 +119,14 @@ class PidFileLocal(PidFile):
 
 class PidFileRemote(PidFile):
 
-    def __init__(self, logger: logging.Logger, pid: int, path: str, conn: Connection) -> None:
+    def __init__(self, logger: Logger, pid: int, path: str, conn: Connection) -> None:
         super().__init__(logger, pid, path)
         self.conn = conn
 
     def delete(self) -> bool:
         result = self.conn.run(f"rm -f {self.path}")
         if not result.ok:
-            self.logger.fatal(f"deleting pid file; path={self.path}, result={result}")
+            self.logger.fatal("deleting pid file", result=result)
             sys.exit(1)
         return True
 
@@ -135,18 +135,18 @@ class PidFileRemote(PidFile):
             f'if [ -f "{self.path}" ]; then echo "1"; else echo "0"; fi', warn=True, hide=True
         )
         if not result.ok:
-            self.logger.error(f"checking for existing pid file; path={self.path}, result={result}")
-            return False, 0
+            self.logger.error("checking for existing pid file", result=result)
+            return False, ""
         stdout = result.stdout
         file_exists = True if stdout.strip() == "1" else False
 
         if file_exists is False:
-            return False, 0
+            return False, ""
 
         result = self.conn.run(f"cat {self.path}", warn=True, hide=True)
         if not result.ok:
-            self.logger.error(f"cat'ing pid file path; path={self.path}, result={result}")
-            return False, 0
+            self.logger.error("cat'ing pid file path", result=result)
+            return False, ""
 
         existing_pid = result.stdout
         return True, existing_pid.strip()
@@ -163,8 +163,7 @@ class PidFileRemote(PidFile):
         if should_write_pid:
             result = self.conn.run(f"echo {self.pid} > {self.path}")
             if not result.ok:
-                self.logger.error(
-                    f"writing remote pid file; pid={self.pid}, path={self.path}, result={result}"
-                )
+                self.logger.error("writing remote pid file", result=result)
                 return False
             return True
+        return False
